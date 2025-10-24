@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Камера с фоном</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Видео с заменой фона</h1>
+
+        <video id="video" style="display: none;"></video>
+        <canvas id="outputCanvas"></canvas>
+
+        <h2>Галерея фонов</h2>
+        <div id="bgGallery" class="bg-gallery"></div>
+    </div>
+    <div class="user-form">
+        <h2>Введите свои данные</h2>
+        <input type="text" id="full_name" placeholder="ФИО" required>
+        <input type="text" id="position" placeholder="Должность" required>
+        <input type="text" id="company" placeholder="Компания" required>
+        <input type="text" id="department" placeholder="Департамент">
+        <input type="text" id="office_location" placeholder="Местоположение">
+        <input type="email" id="email" placeholder="Email" required>
+        <input type="text" id="telegram" placeholder="Telegram">
+        <button id="saveUserBtn">Сохранить</button>
+    </div>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
