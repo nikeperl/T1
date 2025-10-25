@@ -259,128 +259,59 @@ async function segmentWithMediaPipe(selfieSegmentation, video, outputWidth, outp
   });
 }
 
-// === Улучшенная сегментация с MediaPipe + уменьшение размера ===
-async function getSegmentationMask(selfieSegmentation, video, outputWidth, outputHeight) {
-  try {
-    const start = performance.now();
+// === Сегментация (возвращает Canvas, а не ImageData) ===
+async function getSegmentationMaskCanvas(selfieSegmentation, video, outputWidth, outputHeight) {
+    try {
+        const start = performance.now();
 
-    // Масштаб
-    const SCALE = 0.7;
-    const scaledW = Math.round(outputWidth * SCALE);
-    const scaledH = Math.round(outputHeight * SCALE);
+        // Масштаб
+        const SCALE = 0.7; // Оставляем масштабирование, это хорошая оптимизация
+        const scaledW = Math.round(outputWidth * SCALE);
+        const scaledH = Math.round(outputHeight * SCALE);
 
-    // Сегментация на уменьшенном размере
-    const maskCanvas = await segmentWithMediaPipe(selfieSegmentation, video, scaledW, scaledH);
-    if (!maskCanvas) {
-      console.warn("MediaPipe: пустая маска");
-      return null;
-    }
-
-    // Получаем ImageData независимо от типа
-    let maskData;
-    if (maskCanvas instanceof HTMLCanvasElement) {
-      maskData = maskCanvas.getContext("2d").getImageData(0, 0, scaledW, scaledH);
-    } else if (maskCanvas instanceof ImageBitmap) {
-      const offscreen = new OffscreenCanvas(scaledW, scaledH);
-      const ctx = offscreen.getContext("2d");
-      ctx.drawImage(maskCanvas, 0, 0, scaledW, scaledH);
-      maskData = ctx.getImageData(0, 0, scaledW, scaledH);
-    } else {
-      console.error("Неизвестный тип маски MediaPipe:", maskCanvas);
-      return null;
-    }
-
-    // Проверка маски
-    let nonZeroPixels = 0;
-    for (let i = 0; i < maskData.data.length; i += 4) {
-      if (maskData.data[i] > 0) nonZeroPixels++;
-    }
-
-    console.log(`inference: ${(performance.now() - start).toFixed(1)} ms`);
-    console.log(`MediaPipe маска: non-zero pixels=${nonZeroPixels}`);
-
-    if (nonZeroPixels < 50) {
-      console.log("Маска слишком пустая, используем пустую");
-      return null;
-    }
-
-    // Улучшаем маску (морфология)
-    const improvedSmall = improveMask(maskData, scaledW, scaledH);
-
-    // Создаём холст с маленькой маской
-    const tempCanvas = new OffscreenCanvas(scaledW, scaledH);
-    tempCanvas.getContext("2d").putImageData(improvedSmall, 0, 0);
-
-    // Масштабируем обратно до оригинального размера
-    const upscaled = new OffscreenCanvas(outputWidth, outputHeight);
-    const upCtx = upscaled.getContext("2d");
-    upCtx.imageSmoothingEnabled = true;
-    upCtx.imageSmoothingQuality = "medium";
-    upCtx.drawImage(tempCanvas, 0, 0, outputWidth, outputHeight);
-
-    const finalMask = upCtx.getImageData(0, 0, outputWidth, outputHeight);
-    return finalMask;
-
-  } catch (error) {
-    console.error("Ошибка сегментации MediaPipe:", error);
-    return null;
-  }
-}
-
-// === Улучшение маски (морфология + зеркалирование) ===
-function improveMask(maskData, width, height) {
-  const start = performance.now();
-  const src = maskData.data;
-  const mask = new Uint8ClampedArray(width * height);
-
-  // 1. Бинаризация и зеркалирование
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const idx = (y * width + x) * 4;
-      const gray = src[idx];
-      mask[y * width + (width - 1 - x)] = gray > 128 ? 255 : 0;
-    }
-  }
-
-  // 2. Эрозия + Дилатация
-  const eroded = new Uint8ClampedArray(mask.length);
-  const dilated = new Uint8ClampedArray(mask.length);
-  const offsets = [-1, 0, 1];
-
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
-      let min = 255;
-      let max = 0;
-
-      for (let dy of offsets) {
-        for (let dx of offsets) {
-          const val = mask[(y + dy) * width + (x + dx)];
-          min = Math.min(min, val);
-          max = Math.max(max, val);
+        // Сегментация на уменьшенном размере
+        const maskCanvas = await segmentWithMediaPipe(selfieSegmentation, video, scaledW, scaledH);
+        if (!maskCanvas) {
+            console.warn("MediaPipe: пустая маска");
+            return null;
         }
-      }
+        
+        // Мы больше не используем improveMask, которая делала зеркалирование.
+        // Вместо этого мы отзеркалим и масштабируем маску обратно на GPU.
 
-      eroded[y * width + x] = min;
-      dilated[y * width + x] = max;
+        // Используем OffscreenCanvas для масштабирования (он быстрее)
+        // Создаём кэш, если его нет
+        if (!blendCache.upscaledCanvas) {
+            blendCache.upscaledCanvas = new OffscreenCanvas(outputWidth, outputHeight);
+            blendCache.upscaledCtx = blendCache.upscaledCanvas.getContext("2d");
+             blendCache.upscaledCtx.imageSmoothingEnabled = true;
+            blendCache.upscaledCtx.imageSmoothingQuality = "medium";
+        }
+
+        const upscaled = blendCache.upscaledCanvas;
+        const upCtx = blendCache.upscaledCtx;
+
+        // Очищаем и отзеркаливаем (как это делала improveMask)
+        upCtx.clearRect(0, 0, outputWidth, outputHeight);
+        upCtx.save();
+        upCtx.scale(-1, 1); // Зеркалим по X
+        upCtx.translate(-outputWidth, 0);
+        
+        // Рисуем маску (маленькую) на большой холст (с масштабированием и зеркалированием)
+        upCtx.drawImage(maskCanvas, 0, 0, outputWidth, outputHeight);
+        
+        upCtx.restore(); // Возвращаем transform
+
+        console.log(`getMaskCanvas: ${(performance.now() - start).toFixed(1)} ms`);
+
+        // Возвращаем готовый холст (GPU-объект)
+        return upscaled;
+
+    } catch (error) {
+        console.error("Ошибка сегментации MediaPipe:", error);
+        return null;
     }
-  }
-
-  // 3. Собираем итоговое ImageData
-  const result = new ImageData(width, height);
-  const resData = result.data;
-  for (let i = 0; i < width * height; i++) {
-    const v = dilated[i];
-    resData[i * 4] = v;
-    resData[i * 4 + 1] = v;
-    resData[i * 4 + 2] = v;
-    resData[i * 4 + 3] = 255;
-  }
-
-  console.log("improve mask:", performance.now() - start, "ms");
-
-  return result;
 }
-
 
 // === Подготовка (создаём кэш один раз) ===
 const blendCache = {
@@ -392,57 +323,50 @@ const blendCache = {
   frameCtx: null
 };
 
-// === Оптимизированный альфа-блендинг ===
-function compositeFrame(ctx, video, maskData, bgCtx, width, height) {
-  const start = performance.now();
+// === Оптимизированный альфа-блендинг (на GPU) ===
+function compositeFrame(ctx, video, maskCanvas, bgCtx, width, height) {
+    const start = performance.now();
 
-  // --- 1. Инициализация кэша ---
-  if (!blendCache.tempCanvas) {
-    blendCache.tempCanvas = new OffscreenCanvas(width, height);
-    blendCache.tempCtx = blendCache.tempCanvas.getContext("2d");
-    blendCache.blurCanvas = new OffscreenCanvas(width, height);
-    blendCache.blurCtx = blendCache.blurCanvas.getContext("2d");
-    blendCache.frameCanvas = new OffscreenCanvas(width, height);
-    blendCache.frameCtx = blendCache.frameCanvas.getContext("2d");
-  }
+    // --- 1. Инициализация кэша (только blurCanvas) ---
+    if (!blendCache.blurCanvas) {
+        blendCache.blurCanvas = new OffscreenCanvas(width, height);
+        blendCache.blurCtx = blendCache.blurCanvas.getContext("2d", { willReadFrequently: true });
+        // Устанавливаем высокое качество сглаживания один раз
+        blendCache.blurCtx.imageSmoothingEnabled = true;
+        blendCache.blurCtx.imageSmoothingQuality = "medium";
+    }
+    const blurCtx = blendCache.blurCtx;
 
-  const tempCtx = blendCache.tempCtx;
-  const blurCtx = blendCache.blurCtx;
-  const frameCtx = blendCache.frameCtx;
+    // --- 2. Размытие маски (всё на GPU) ---
+    // Очищаем предыдущую маску
+    blurCtx.clearRect(0, 0, width, height); 
+    // Устанавливаем фильтр
+    blurCtx.filter = "blur(4px)";
+    // Рисуем маску (полученную от getSegmentationMaskCanvas)
+    blurCtx.drawImage(maskCanvas, 0, 0, width, height);
+    // Сбрасываем фильтр, чтобы он применился
+    blurCtx.filter = "none";
 
-  // --- 2. Получаем кадр видео и фона ---
-  frameCtx.drawImage(video, 0, 0, width, height);
-  const frameData = frameCtx.getImageData(0, 0, width, height);
-  const bgData = bgCtx.getImageData(0, 0, width, height);
+    // --- 3. Композитинг (всё на GPU) ---
 
-  // --- 3. Размытие маски (используем OffscreenCanvas + putImageData) ---
-  blurCtx.filter = "blur(4px)"; // меньше — быстрее
-  blurCtx.putImageData(maskData, 0, 0);
-  blurCtx.drawImage(blendCache.blurCanvas, 0, 0); // применяем фильтр
-  const blurredMask = blurCtx.getImageData(0, 0, width, height);
+    // Шаг 1: Рисуем видео (человек) на главный холст
+    ctx.drawImage(video, 0, 0, width, height);
 
-  // --- 4. Альфа-композитинг (векторизованный цикл) ---
-  const o = ctx.createImageData(width, height);
-  const od = o.data;
-  const fd = frameData.data;
-  const bd = bgData.data;
-  const md = blurredMask.data;
+    // Шаг 2: "Вырезаем" человека по размытой маске
+    // 'destination-in' оставляет только те пиксели 'destination' (видео),
+    // которые пересекаются с 'source' (размытой маской).
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(blendCache.blurCanvas, 0, 0);
 
-  // Основной цикл: сведен к минимуму, с ручной инлайновой арифметикой
-  for (let i = 0; i < md.length; i += 4) {
-    const a = md[i] / 255;
-    const ia = 1 - a;
+    // Шаг 3: Рисуем фон *под* вырезанным человеком
+    // 'destination-over' рисует 'source' (фон) *позади* 'destination' (человека).
+    ctx.globalCompositeOperation = 'destination-over';
+    ctx.drawImage(bgCtx.canvas, 0, 0, width, height);
 
-    od[i]     = fd[i]     * a + bd[i]     * ia;
-    od[i + 1] = fd[i + 1] * a + bd[i + 1] * ia;
-    od[i + 2] = fd[i + 2] * a + bd[i + 2] * ia;
-    od[i + 3] = 255;
-  }
+    // Шаг 4: Сбрасываем операцию для следующего кадра
+    ctx.globalCompositeOperation = 'source-over';
 
-  // --- 5. Отрисовка результата ---
-  ctx.putImageData(o, 0, 0);
-
-  console.log("compositeFrame optimized:", (performance.now() - start).toFixed(2), "ms");
+    console.log("compositeFrame GPU:", (performance.now() - start).toFixed(2), "ms");
 }
 
 // === Основной цикл ===
@@ -508,17 +432,18 @@ async function startBackgroundReplacement() {
                     bgCtx.filter = 'none';
                     bgCtx.drawImage(bgTempCanvas, 0, 0, canvas.width, canvas.height);
                 }
-                // Получаем маску сегментации
-                maskData = await getSegmentationMask(selfieSegmentation, video, canvas.width, canvas.height);
+                
+                // Получаем маску сегментации (теперь это Canvas)
+                const maskCanvas = await getSegmentationMaskCanvas(selfieSegmentation, video, canvas.width, canvas.height);
                 temp = performance.now() - start;
-                console.log("trans mask:", temp, "ms");
+                console.log("trans mask (canvas):", temp, "ms");
 
-                if (maskData) {
-                    const hasValidMask = maskData && maskData.data?.some((v, i) => !(i % 4) && v > 50);
-
-                    if (hasValidMask) {
-                        compositeFrame(ctx, video, maskData, bgCtx, canvas.width, canvas.height);
-                    }
+                if (maskCanvas) {
+                    // Вызываем новую GPU-версию композитинга
+                    compositeFrame(ctx, video, maskCanvas, bgCtx, canvas.width, canvas.height);
+                } else {
+                    // Если маски нет (ошибка), просто рисуем видео
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 }
                 temp = performance.now() - temp - start;
                 console.log("compose:", temp, "ms");
