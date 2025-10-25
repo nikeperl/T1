@@ -10,24 +10,65 @@
     <div class="container">
         <h1>Видео с заменой фона</h1>
 
-        <video id="video" style="display: none;"></video>
+        <video id="video" autoplay playsinline></video>
         <canvas id="outputCanvas"></canvas>
+        <div id="fps">FPS: 0</div>
 
         <h2>Галерея фонов</h2>
         <div id="bgGallery" class="bg-gallery"></div>
-    </div>
-    <div class="user-form">
-        <h2>Введите свои данные</h2>
-        <input type="text" id="full_name" placeholder="ФИО" required>
-        <input type="text" id="position" placeholder="Должность" required>
-        <input type="text" id="company" placeholder="Компания" required>
-        <input type="text" id="department" placeholder="Департамент">
-        <input type="text" id="office_location" placeholder="Местоположение">
-        <input type="email" id="email" placeholder="Email" required>
-        <input type="text" id="telegram" placeholder="Telegram">
-        <button id="saveUserBtn">Сохранить</button>
+        <button id="toggleMode">Показать оригинал</button>
+        <div id="status">Загрузка модели...</div>
     </div>
 
-    <script type="module" src="script.js"></script>
+    <div class="container">
+        <h1>Профиль сотрудника</h1>
+
+        <div class="user-form">
+            <h2>Введите свои данные</h2>
+            <input type="text" id="full_name" placeholder="ФИО" required>
+            <input type="text" id="position" placeholder="Должность" required>
+            <input type="text" id="company" placeholder="Компания" required>
+            <input type="text" id="department" placeholder="Департамент">
+            <input type="text" id="office_location" placeholder="Местоположение">
+            
+            <h3>Контакты</h3>
+            <input type="email" id="email" placeholder="Email" required>
+            <input type="text" id="telegram" placeholder="Telegram">
+
+            <h3>Брендинг</h3>
+            <input type="url" id="logo_url" placeholder="URL логотипа">
+            <input type="text" id="slogan" placeholder="Слоган компании">
+            
+            <div class="color-picker-bar">
+                <div class="color-picker-item">
+                    <input type="color" id="primary_color" value="#0052CC">
+                    <div class="color-display" id="primary_color_display"></div>
+                    <label>Основной</label>
+                </div>
+                <div class="color-picker-item">
+                    <input type="color" id="secondary_color" value="#00B8D9">
+                    <div class="color-display" id="secondary_color_display"></div>
+                    <label>Вторичный</label>
+                </div>
+            </div>
+
+            <h3>Уровень конфиденциальности</h3>
+            <select id="privacy_level">
+                <option value="low">Низкий</option>
+                <option value="medium" selected>Средний</option>
+                <option value="high">Высокий</option>
+            </select>
+
+            <button id="saveUserBtn">Сохранить</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+
+    <script src="script.js"></script>
 </body>
 </html>
+

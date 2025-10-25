@@ -1,190 +1,107 @@
-import * as ort from "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.mjs";
+// MediaPipe для сегментации людей
 
 let currentBackground = null;
+let showOriginal = false;
 
-// Сохранение данных
-function saveUserDynamic() {
-    const btn = document.getElementById('saveUserBtn');
+const canvas = document.getElementById('outputCanvas');
+canvas.addEventListener('click', () => {
+    canvas.classList.toggle('fullscreen');
+});
 
-    btn.addEventListener('click', () => {
-        const full_name = document.getElementById('full_name').value;
-        const position = document.getElementById('position').value;
-        const company = document.getElementById('company').value;
-        const department = document.getElementById('department').value;
-        const office_location = document.getElementById('office_location').value;
-        const email = document.getElementById('email').value;
-        const telegram = document.getElementById('telegram').value;
+document.addEventListener('DOMContentLoaded', () => {
+    const primaryInput = document.getElementById('primary_color');
+    const secondaryInput = document.getElementById('secondary_color');
+    const primaryDisplay = document.getElementById('primary_color_display');
+    const secondaryDisplay = document.getElementById('secondary_color_display');
 
-        if (!full_name || !position || !company || !email) {
-            alert('Пожалуйста, заполните все обязательные поля.');
-            return;
-        }
+    // Инициализация отображения выбранных цветов
+    function updateColor(display, input) {
+        display.style.backgroundColor = input.value;
+    }
+    updateColor(primaryDisplay, primaryInput);
+    updateColor(secondaryDisplay, secondaryInput);
 
-        const user = {
-            "employee": {
-                full_name,
-                position,
-                company,
-                department,
-                office_location,
-                contact: { email, telegram },
-                branding: {
-                    logo_url: "",
-                    corporate_colors: { primary: "#0052CC", secondary: "#00B8D9" },
-                    slogan: ""
+    primaryInput.addEventListener('input', () => updateColor(primaryDisplay, primaryInput));
+    secondaryInput.addEventListener('input', () => updateColor(secondaryDisplay, secondaryInput));
+
+    // Клик по квадрату открывает color picker
+    primaryDisplay.addEventListener('click', () => primaryInput.click());
+    secondaryDisplay.addEventListener('click', () => secondaryInput.click());
+
+    // Функция сохранения
+    const saveBtn = document.getElementById('saveUserBtn');
+    saveBtn.addEventListener('click', () => {
+        const employeeData = {
+            employee: {
+                full_name: document.getElementById('full_name').value,
+                position: document.getElementById('position').value,
+                company: document.getElementById('company').value,
+                department: document.getElementById('department').value,
+                office_location: document.getElementById('office_location').value,
+                contact: {
+                    email: document.getElementById('email').value,
+                    telegram: document.getElementById('telegram').value
                 },
-                privacy_level: "medium"
+                branding: {
+                    logo_url: document.getElementById('logo_url').value,
+                    corporate_colors: {
+                        primary: primaryInput.value,
+                        secondary: secondaryInput.value
+                    },
+                    slogan: document.getElementById('slogan').value
+                },
+                privacy_level: document.getElementById('privacy_level').value
             }
         };
 
-        // Загружаем текущих пользователей из localStorage
-        let users = JSON.parse(localStorage.getItem('users')) || {};
-        users[email] = user; // ключ — email для уникальности
-        localStorage.setItem('users', JSON.stringify(users));
-
-        alert('Пользователь сохранен!');
-        console.log('Все пользователи:', users);
+        // Сохраняем в localStorage (перезаписывает при повторном сохранении)
+        localStorage.setItem('employeeProfile', JSON.stringify(employeeData));
+        alert('Данные сохранены!');
     });
-}
 
-// Генерация случайного паттерна
-function generateRandomColorBackground(width = 640, height = 480) {
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-
-    // Генерация случайного цвета
-    const r = Math.floor(Math.random() * 256);
-    const g = Math.floor(Math.random() * 256);
-    const b = Math.floor(Math.random() * 256);
-    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-
-    ctx.fillRect(0, 0, width, height);
-
-    return canvas.toDataURL();
-}
-
+    // Если есть сохранённые данные, загружаем их
+    const savedData = localStorage.getItem('employeeProfile');
+    if (savedData) {
+        const data = JSON.parse(savedData);
+        document.getElementById('full_name').value = data.employee.full_name || '';
+        document.getElementById('position').value = data.employee.position || '';
+        document.getElementById('company').value = data.employee.company || '';
+        document.getElementById('department').value = data.employee.department || '';
+        document.getElementById('office_location').value = data.employee.office_location || '';
+        document.getElementById('email').value = data.employee.contact.email || '';
+        document.getElementById('telegram').value = data.employee.contact.telegram || '';
+        document.getElementById('logo_url').value = data.employee.branding.logo_url || '';
+        document.getElementById('slogan').value = data.employee.branding.slogan || '';
+        primaryInput.value = data.employee.branding.corporate_colors.primary || '#0052CC';
+        secondaryInput.value = data.employee.branding.corporate_colors.secondary || '#00B8D9';
+        updateColor(primaryDisplay, primaryInput);
+        updateColor(secondaryDisplay, secondaryInput);
+        document.getElementById('privacy_level').value = data.employee.privacy_level || 'medium';
+    }
+});
 
 // Галерея фонов
 function setupGallery() {
-    const videoWrapper = document.querySelector('.video-wrapper');
-    const gallery = document.getElementById('bgGallery');
+  const gallery = document.getElementById("bgGallery");
+  const backgrounds = [
+    "backgrounds/bg1.png",
+    "backgrounds/bg2.png",
+    "backgrounds/bg3.png",
+    "backgrounds/bg4.png"
+  ];
 
-    const backgrounds = [
-        generateRandomColorBackground(),
-        generateRandomColorBackground(),
-        generateRandomColorBackground(),
-        generateRandomColorBackground()
-    ];
-
-    backgrounds.forEach((bg, index) => {
-        const img = document.createElement('img');
-        img.src = bg;
-        img.title = `Фон ${index + 1}`;
-        img.addEventListener('click', () => {
-            currentBackground = bg;
-        });
-        gallery.appendChild(img);
-    });
-
-    currentBackground = backgrounds[0];
-}
-
-// Запуск камеры
-async function startCamera() {
-    try {
-        const constraints = { video: true, audio: false };
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        const videoElement = document.getElementById('video');
-        videoElement.srcObject = stream;
-        await videoElement.play();
-        console.log("Камера запущена", video);
-        return videoElement;
-    } catch (err) {
-        console.error('Ошибка доступа к камере:', err);
-    }
-}
-
-// ONNX сегментация человека apple/deeplabv3-mobilevit-small
-async function loadSegmentationModel(modelUrl) {
-    const session = await ort.InferenceSession.create(modelUrl);
-    console.log("Модель загружена", session);
-    return session;
-}
-
-function getTestMask(width = 512, height = 512) {
-    const t0 = performance.now();
-    const personMask = new Uint8ClampedArray(width * height);
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const radius = Math.min(width, height) / 4;
-
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const dx = x - centerX;
-            const dy = y - centerY;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            const index = y * width + x;
-            personMask[index] = dist <= radius ? 255 : 0;
-        }
-    }
-
-    const inferenceTime = performance.now() - t0;
-
-    return { mask: personMask, width, height, inferenceTime };
-}
-
-async function getPersonMask(session, videoElement) {
-    const width = 512; // размер модели
-    const height = 512;
-
-    // 1. Копируем текущий кадр видео в canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(videoElement, 0, 0, width, height);
-
-    // 2. Получаем данные пикселей
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = new Float32Array(width * height * 3);
-
-    // Преобразуем в BGR [0,1]
-    for (let i = 0; i < width * height; i++) {
-        data[i*3+0] = imageData.data[i*4+2]/255.0; // B
-        data[i*3+1] = imageData.data[i*4+1]/255.0; // G
-        data[i*3+2] = imageData.data[i*4+0]/255.0; // R
-    }
-
-    // 3. Создаем тензор
-    const inputTensor = new ort.Tensor('float32', data, [1, 3, height, width]); // [N,C,H,W]
-    const feeds = {};
-    feeds[session.inputNames[0]] = inputTensor;
-
-    // 4. Запускаем инференс
-    try {
-        const t0 = performance.now();
-        const output = await session.run(feeds);
-        const inferenceTime = performance.now() - t0;
-
-        console.log("INFERENCE time:", inferenceTime.toFixed(2), "ms");
-
-        // 5. Получаем маску (обычно последний слой - логиты классов)
-        const maskData = output[session.outputNames[0]].data; // shape: [1, 21, H, W] для 21 класса
-        // Убираем все кроме класса "человек" (в deeplabv3 15-й класс)
-        const personMask = new Uint8ClampedArray(width * height);
-
-        for (let i = 0; i < width * height; i++) {
-            personMask[i] = maskData[i + 15 * width * height] > 0.5 ? 255 : 0;
-        }
-
-        return { mask: personMask, width, height, inferenceTime };
-
-    } catch (e) {
-        console.error("Ошибка инференса ONNX:", e);
-        return null;
-    }
+  gallery.innerHTML = ""; // Очистка
+  backgrounds.forEach((bg, i) => {
+    const img = document.createElement("img");
+    img.src = bg;
+    img.className = "bg-thumb";
+    img.title = `Фон ${i + 1}`;
+    img.loading = "lazy";
+    img.onclick = () => {
+      currentBackground = bg;
+    };
+    gallery.appendChild(img);
+  });
 }
 
 async function loadImage(url) {
@@ -195,111 +112,388 @@ async function loadImage(url) {
     });
 }
 
-function resizeMask(personMask, srcWidth, srcHeight, dstWidth, dstHeight) {
-    // создаем RGBA-буфер для исходной маски
-    const rgba = new Uint8ClampedArray(srcWidth * srcHeight * 4);
-    for (let i = 0, j = 0; i < personMask.length; i++, j += 4) {
-        const v = personMask[i];
-        rgba[j] = rgba[j + 1] = rgba[j + 2] = v;
-        rgba[j + 3] = 255;
+// === Переключение режимов ===
+function setupToggleButton() {
+  const toggleBtn = document.getElementById("toggleMode");
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", () => {
+      showOriginal = !showOriginal;
+      toggleBtn.textContent = showOriginal ? "Показать с фоном" : "Показать оригинал";
+      toggleBtn.style.background = showOriginal ? "#ff4444" : "#0052CC";
+    });
+  }
+}
+
+// === Запуск камеры ===
+async function startCamera() {
+    try {
+        const constraints = { video: true, audio: false };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const videoElement = document.getElementById('video');
+        videoElement.srcObject = stream;
+        await videoElement.play();
+        return videoElement;
+    } catch (err) {
+        console.error('Ошибка доступа к камере:', err);
     }
-
-    // создаем OffscreenCanvas и рисуем с масштабированием
-    const srcCanvas = new OffscreenCanvas(srcWidth, srcHeight);
-    const sctx = srcCanvas.getContext('2d');
-    sctx.putImageData(new ImageData(rgba, srcWidth, srcHeight), 0, 0);
-
-    const dstCanvas = new OffscreenCanvas(dstWidth, dstHeight);
-    const dctx = dstCanvas.getContext('2d');
-    dctx.drawImage(srcCanvas, 0, 0, dstWidth, dstHeight);
-
-    // получаем обратно grayscale маску
-    const resized = dctx.getImageData(0, 0, dstWidth, dstHeight).data;
-    const mask = new Uint8ClampedArray(dstWidth * dstHeight);
-    for (let i = 0, j = 0; i < mask.length; i++, j += 4) mask[i] = resized[j];
-
-    return mask;
 }
 
-// Наложение человека на фон
-function createBackgroundMerger(video, backgroundImg, width, height) {
-    const videoCanvas = document.createElement('canvas');
-    videoCanvas.width = width;
-    videoCanvas.height = height;
-    const vctx = videoCanvas.getContext('2d');
+// === Инициализация MediaPipe ===
+async function initializeMediaPipe() {
+  try {
+    console.log("[MediaPipe] Инициализация SelfieSegmentation...");
+    
+    // Ждем загрузки MediaPipe
+    await new Promise(resolve => {
+      if (window.SelfieSegmentation) {
+        resolve();
+      } else {
+        const checkMediaPipe = setInterval(() => {
+          if (window.SelfieSegmentation) {
+            clearInterval(checkMediaPipe);
+            resolve();
+          }
+        }, 100);
+      }
+    });
+    
+    const selfieSegmentation = new window.SelfieSegmentation({
+      locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`;
+      }
+    });
+    
+    selfieSegmentation.setOptions({
+      modelSelection: 1, // 0 = general, 1 = landscape
+      selfieMode: true
+    });
+    
+    console.log("[MediaPipe] ✅ SelfieSegmentation инициализирован");
+    
+    // Обновляем статус
+    const statusEl = document.getElementById("status");
+    statusEl.textContent = "MediaPipe загружен (оптимизированная производительность)";
+    statusEl.style.color = "#00ff00";
+    
+    return selfieSegmentation;
+  } catch (error) {
+    console.error("[MediaPipe] Ошибка инициализации:", error);
+    throw new Error("Не удалось инициализировать MediaPipe");
+  }
+}
 
-    const outputCanvas = new OffscreenCanvas(width, height);
-    const octx = outputCanvas.getContext('2d');
+// === Сегментация с MediaPipe ===
+async function segmentWithMediaPipe(selfieSegmentation, video, outputWidth, outputHeight) {
+  return new Promise((resolve) => {
+    selfieSegmentation.onResults((results) => {
+      if (results.segmentationMask) {
+        // Создаем маску из результатов MediaPipe
+        const maskCanvas = document.createElement("canvas");
+        maskCanvas.width = outputWidth;
+        maskCanvas.height = outputHeight;
+        const maskCtx = maskCanvas.getContext("2d");
+        
+        // Рисуем маску сегментации
+        maskCtx.drawImage(results.segmentationMask, 0, 0, outputWidth, outputHeight);
+        
+        const maskData = maskCtx.getImageData(0, 0, outputWidth, outputHeight);
+        resolve(maskData);
+      } else {
+        // Если маска не найдена, создаем пустую
+        resolve(null);
+      }
+    });
+    
+    // Отправляем кадр на обработку
+    selfieSegmentation.send({ image: video });
+  });
+}
 
-    const bgCanvas = document.createElement('canvas');
-    bgCanvas.width = width;
-    bgCanvas.height = height;
-    const bgctx = bgCanvas.getContext('2d');
-    bgctx.drawImage(backgroundImg, 0, 0, width, height);
-    const bgData = bgctx.getImageData(0, 0, width, height);
+// === Улучшенная сегментация с MediaPipe ===
+async function getSegmentationMask(selfieSegmentation, video, outputWidth, outputHeight) {
+  try {
+    const start = performance.now();
+    const maskData = await segmentWithMediaPipe(selfieSegmentation, video, outputWidth, outputHeight);
+    console.log("inference:", performance.now() - start, "ms");
+    
+    // Проверяем, что маска содержит данные
+    const maskValues = Array.from(maskData.data).filter((val, i) => i % 4 === 0);
+    const nonZeroPixels = maskValues.filter(v => v > 0).length;
+    
+    console.log(`MediaPipe маска: non-zero pixels=${nonZeroPixels}`);
+    
+    if (nonZeroPixels < 100) {
+      console.log("Маска слишком пустая, используем пустую маску");
+      return null;
+    }
+    
+    // Улучшаем маску морфологическими операциями
+    const improvedMask = improveMask(maskData, outputWidth, outputHeight);
+    
+    return improvedMask;
+  } catch (error) {
+    console.error("Ошибка сегментации MediaPipe:", error);
+    return null;
+  }
+}
 
-    const videoData = vctx.getImageData(0, 0, width, height);
-    const outputData = octx.createImageData(width, height);
+// === Улучшение маски ===
+function improveMask(maskData, width, height) {
+  // Создаем canvas для обработки
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
 
-    return function merge(personMask) {
-        // 1. Кадр видео
-        vctx.drawImage(video, 0, 0, width, height);
-        const v = vctx.getImageData(0, 0, width, height).data;
-        const b = bgData.data;
-        const o = outputData.data;
+  // Зеркалим
+  const tempCanvas = document.createElement("canvas");
+  tempCanvas.width = width;
+  tempCanvas.height = height;
+  const tempCtx = tempCanvas.getContext("2d");
+  tempCtx.putImageData(maskData, 0, 0);
 
-        // 2. Альфа-смешивание (векторизовано, без объектов)
-        for (let i = 0, j = 0; i < personMask.length; i++, j += 4) {
-            const a = personMask[i] / 255;
-            const ia = 1 - a;
-            o[j]   = v[j]   * a + b[j]   * ia;
-            o[j+1] = v[j+1] * a + b[j+1] * ia;
-            o[j+2] = v[j+2] * a + b[j+2] * ia;
-            o[j+3] = 255;
+  ctx.save();
+  ctx.translate(width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(tempCanvas, 0, 0); // рисуем только зеркальную маску
+  ctx.restore();
+  
+  // Применяем размытие для сглаживания
+  ctx.filter = "blur(2px)";
+  ctx.drawImage(canvas, 0, 0);
+  
+  // Применяем пороговую обработку для четкости
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
+  
+  for (let i = 0; i < data.length; i += 4) {
+    const gray = data[i]; // R канал
+    // Бинаризация с порогом 128
+    const binary = gray > 128 ? 255 : 0;
+    data[i] = binary;     // R
+    data[i + 1] = binary; // G
+    data[i + 2] = binary; // B
+    data[i + 3] = 255;    // A
+  }
+  
+  ctx.putImageData(imgData, 0, 0);
+  
+  // Эрозия для удаления шума
+  const eroded = erodeMask(imgData, width, height);
+  ctx.putImageData(eroded, 0, 0);
+  
+  // Дилатация для восстановления размера
+  const dilated = dilateMask(eroded, width, height);
+  
+  return dilated;
+}
+
+// === Эрозия маски ===
+function erodeMask(imgData, width, height) {
+  const result = new ImageData(width, height);
+  const data = imgData.data;
+  const resultData = result.data;
+  
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = (y * width + x) * 4;
+      
+      // Проверяем 3x3 окрестность
+      let minValue = 255;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const neighborIdx = ((y + dy) * width + (x + dx)) * 4;
+          minValue = Math.min(minValue, data[neighborIdx]);
         }
-
-        octx.putImageData(outputData, 0, 0);
-        return outputCanvas;
-    };
+      }
+      
+      resultData[idx] = minValue;
+      resultData[idx + 1] = minValue;
+      resultData[idx + 2] = minValue;
+      resultData[idx + 3] = 255;
+    }
+  }
+  
+  return result;
 }
 
+// === Дилатация маски ===
+function dilateMask(imgData, width, height) {
+  const result = new ImageData(width, height);
+  const data = imgData.data;
+  const resultData = result.data;
+  
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = (y * width + x) * 4;
+      
+      // Проверяем 3x3 окрестность
+      let maxValue = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const neighborIdx = ((y + dy) * width + (x + dx)) * 4;
+          maxValue = Math.max(maxValue, data[neighborIdx]);
+        }
+      }
+      
+      resultData[idx] = maxValue;
+      resultData[idx + 1] = maxValue;
+      resultData[idx + 2] = maxValue;
+      resultData[idx + 3] = 255;
+    }
+  }
+  
+  return result;
+}
 
-async function startBackgroundReplacement(modelUrl) {
+// === Альфа-блендинг с улучшениями ===
+function compositeFrame(ctx, video, maskData, bgCtx, width, height) {
+  // Берем пиксели видео и фона
+  const frameData = getFrameData(video, width, height);
+  const bgData = bgCtx.getImageData(0, 0, width, height);
+  
+  // Размываем маску для плавных краев
+  const tempCanvas = document.createElement("canvas");
+  tempCanvas.width = width;
+  tempCanvas.height = height;
+  const tempCtx = tempCanvas.getContext("2d");
+  tempCtx.putImageData(maskData, 0, 0);
+  tempCtx.filter = "blur(6px)";
+  tempCtx.drawImage(tempCanvas, 0, 0);
+  const blurredMask = tempCtx.getImageData(0, 0, width, height);
+
+  const output = ctx.createImageData(width, height);
+  const o = output.data;
+  const f = frameData.data;
+  const b = bgData.data;
+  const m = blurredMask.data;
+
+  // Основной цикл пикселей
+  for (let i = 0; i < m.length; i += 4) {
+    const alpha = m[i] / 255; // Используем R-канал как маску
+    const invAlpha = 1 - alpha;
+
+    o[i]     = f[i]     * alpha + b[i]     * invAlpha;
+    o[i + 1] = f[i + 1] * alpha + b[i + 1] * invAlpha;
+    o[i + 2] = f[i + 2] * alpha + b[i + 2] * invAlpha;
+    o[i + 3] = 255;
+  }
+
+  ctx.putImageData(output, 0, 0);
+}
+
+function getFrameData(video, width, height) {
+  const tempCanvas = document.createElement("canvas");
+  tempCanvas.width = width;
+  tempCanvas.height = height;
+  const tempCtx = tempCanvas.getContext("2d");
+  tempCtx.drawImage(video, 0, 0, width, height);
+  return tempCtx.getImageData(0, 0, width, height);
+}
+
+// === Основной цикл ===
+async function startBackgroundReplacement() {
+    const statusEl = document.getElementById("status");
+    statusEl.textContent = "Запуск камеры...";
+
     const video = await startCamera();
-    const session = await loadSegmentationModel(modelUrl);
-
     const { videoWidth, videoHeight } = video;
-    const outputCanvas = document.getElementById('outputCanvas');
-    const ctx = outputCanvas.getContext('2d', { willReadFrequently: true });
-    outputCanvas.width = videoWidth;
-    outputCanvas.height = videoHeight;
+
+    console.log("Видео размеры:", videoWidth, "x", videoHeight);
+
+    statusEl.textContent = "Загрузка MediaPipe...";
+    const selfieSegmentation = await initializeMediaPipe();
+    statusEl.style.display = "none";
+
+    const canvas = document.getElementById("outputCanvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    canvas.width = videoWidth;
+    canvas.height = videoHeight;
+
+    // Предварительно создаём один фоновой canvas (без пересоздания в каждом кадре)
+    const bgCanvas = document.createElement("canvas");
+    const bgCtx = bgCanvas.getContext("2d");
+    bgCanvas.width = canvas.width;
+    bgCanvas.height = canvas.height;
+
+    let maskData = null;
+    let bgImageCache = null;
+    let fps = 0;
 
     async function loop() {
-        const t0 = performance.now();
+        const start = performance.now();
+        let temp = null;
 
-        // const { mask, width, height, inferenceTime } = await getPersonMask(session, video);
-        const { mask, width, height, inferenceTime } = await getTestMask();
-        const resizedMask = resizeMask(mask, width, height, videoWidth, videoHeight);
+        try {
+            if (showOriginal) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            } else {
+                // Готовим фон
+                if (currentBackground) {
+                    // Замена изображением
+                    if (!bgImageCache || bgImageCache.src !== currentBackground) {
+                        bgImageCache = await loadImage(currentBackground);
+                    }
+                    bgCtx.drawImage(bgImageCache, 0, 0, canvas.width, canvas.height);
+                } else {
+                    // Размытие фона через downscale → blur → upscale
+                    const scale = 0.4;
+                    const w = canvas.width * scale;
+                    const h = canvas.height * scale;
 
-         // Загружаем текущий фон
-        const bgImg = await loadImage(currentBackground);
+                    const bgTempCanvas = document.createElement('canvas');
+                    bgTempCanvas.width = w;
+                    bgTempCanvas.height = h;
+                    const tempCtx = bgTempCanvas.getContext('2d');
 
-        // Создаем merger на лету (можно оптимизировать, если заранее держать)
-        const merge = createBackgroundMerger(video, bgImg, videoWidth, videoHeight);
-        const mergedCanvas = merge(resizedMask);
+                    tempCtx.drawImage(video, 0, 0, w, h);
 
-        ctx.drawImage(mergedCanvas, 0, 0);
+                    tempCtx.filter = 'blur(10px)';
+                    tempCtx.drawImage(bgTempCanvas, 0, 0);
 
-        const total = performance.now() - t0;
+                    bgCtx.filter = 'none';
+                    bgCtx.drawImage(bgTempCanvas, 0, 0, canvas.width, canvas.height);
+                }
+                // Получаем маску сегментации
+                maskData = await getSegmentationMask(selfieSegmentation, video, canvas.width, canvas.height);
+                temp = performance.now() - start;
+                console.log("trans mask:", temp, "ms");
 
-        console.log("total time:", total.toFixed(2), "ms");
+                if (maskData) {
+                    const hasValidMask = maskData && maskData.data?.some((v, i) => !(i % 4) && v > 50);
+
+                    if (hasValidMask) {
+                        compositeFrame(ctx, video, maskData, bgCtx, canvas.width, canvas.height);
+                    }
+                }
+                temp = performance.now() - temp - start;
+                console.log("compose:", temp, "ms");
+            }
+
+            // FPS
+            const elapsed = performance.now() - start;
+            fps = (1000 / elapsed).toFixed(1);
+            document.getElementById("fps").innerText = `FPS: ${fps}`;
+            console.log("time for frame:", elapsed, "ms");
+
+        } catch (error) {
+            console.error("Ошибка обработки кадра:", error);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        }
+
         requestAnimationFrame(loop);
     }
 
     loop();
 }
 
+// === Инициализация ===
 setupGallery();
-const modelUrl = 'deeplabv3-mobilevit-small.onnx';
-
-startBackgroundReplacement(modelUrl);
+setupToggleButton();
+startBackgroundReplacement().catch(err => {
+  console.error("Ошибка запуска:", err);
+  const statusEl = document.getElementById("status");
+  statusEl.textContent = `Ошибка: ${err.message}`;
+  statusEl.style.color = "#ff4444";
+  alert("Не удалось запустить MediaPipe. Проверьте подключение к интернету.");
+});

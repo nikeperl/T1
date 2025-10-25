@@ -1,63 +1,172 @@
+/* Общие стили */
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: #f0f2f5;
     margin: 0;
-    padding: 0;
+    padding: 20px;
     display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    min-height: 100vh;
+    flex-direction: column;
+    align-items: center;
+    gap: 30px;
+}
+
+h1, h2, h3 {
+    color: #333;
+    margin-bottom: 12px;
 }
 
 .container {
-    margin-top: 30px;
-    background: white;
-    padding: 20px 30px;
-    border-radius: 12px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-    text-align: center;
+    background: #fff;
+    padding: 25px 35px;
+    border-radius: 15px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.15);
     max-width: 700px;
-}
-
-.user-form {
-    margin-top: 30px;
-    background: white;
-    padding: 20px 30px;
-    border-radius: 12px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    width: 100%;
     text-align: center;
-    max-width: 700px;
 }
 
-h1, h2 {
-    color: #333;
+/* Видео и Canvas */
+#outputCanvas {
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+#outputCanvas.fullscreen {
+    position: fixed;
+    top: 50%;
+    width: 80%;
+    height: auto;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 40px rgba(0,0,0,0.5);
 }
 
-.controls {
-    margin: 10px 0;
+#toggleMode {
+    padding: 10px 20px; 
+    background: #0052CC; 
+    color: #000; 
+    border: none; 
+    border-radius: 8px; 
+    cursor: pointer; 
+    font-weight: bold;
+    transition: 0.3s;
 }
 
+#video {
+    display: none;
+}
+
+#status {
+    margin-top: 10px;
+    color: #000;
+    font-family: monospace;
+}
+
+/* Галерея */
 .bg-gallery {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     flex-wrap: wrap;
     justify-content: center;
+    margin-bottom: 20px;
 }
 
 .bg-gallery img {
     width: 100px;
     height: 75px;
     object-fit: cover;
-    border-radius: 6px;
+    border-radius: 8px;
     border: 2px solid transparent;
     cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s;
 }
 
 .bg-gallery img:hover {
     border-color: #0052CC;
+    transform: scale(1.05);
 }
 
-#outputCanvas {
-    width: 640px;
-    height: auto;
+/* Форма пользователя */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+.user-form input, 
+.user-form select, 
+.user-form button {
+    width: 100%;
+    padding: 12px 15px;
+    margin: 8px 0;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.user-form input:focus, 
+.user-form select:focus {
+    border-color: #0052CC;
+}
+
+.user-form button {
+    margin-top: 15px;
+    background-color: #0052CC;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s;
+}
+
+.user-form button:hover {
+    background-color: #003a99;
+    transform: translateY(-2px);
+}
+
+/* Цветовые группы для брендинга */
+.color-picker-bar {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    margin: 15px 0;
+}
+
+.color-picker-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.color-picker-item input[type="color"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.color-display {
+    width: 60px;
+    height: 60px;
+    border-radius: 15px;
+    border: 2px solid #ccc;
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s;
+    background-color: #fff; /* обязательный фон по умолчанию */
+}
+
+.color-display:hover {
+    transform: scale(1.1);
+    border-color: #0052CC;
+}
+
+.color-picker-item label {
+    font-weight: bold;
+    font-size: 14px;
 }
