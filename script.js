@@ -1,7 +1,10 @@
 // MediaPipe для сегментации людей
 
-let currentBackground = null;
 let showOriginal = false;
+let bgImageCache = null;
+let currentEmployeeData = null;
+let logoImageCache = null;
+let fps = 0;
 
 const canvas = document.getElementById('outputCanvas');
 canvas.addEventListener('click', () => {
@@ -54,9 +57,19 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        currentEmployeeData = employeeData; // Сохраняем данные глобально
+
+        // Кэшируем логотип
+        if (employeeData.employee.branding.logo_url) {
+            loadImage(employeeData.employee.branding.logo_url).then(img => { 
+                logoImageCache = img; 
+            });
+        } else {
+            logoImageCache = null; // Сбрасываем, если URL пуст
+        }
+
         // Сохраняем в localStorage (перезаписывает при повторном сохранении)
         localStorage.setItem('employeeProfile', JSON.stringify(employeeData));
-        renderOverlay(employeeData);
         alert('Данные сохранены!');
     });
 
@@ -64,6 +77,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const savedData = localStorage.getItem('employeeProfile');
     if (savedData) {
         const data = JSON.parse(savedData);
+
+        currentEmployeeData = data; // Сохраняем данные глобально
+
+        // Кэшируем логотип при загрузке
+        if (data.employee.branding.logo_url) {
+            loadImage(data.employee.branding.logo_url).then(img => { 
+                logoImageCache = img; 
+            });
+        } else {
+            logoImageCache = null;
+        }
+
         document.getElementById('full_name').value = data.employee.full_name || '';
         document.getElementById('position').value = data.employee.position || '';
         document.getElementById('company').value = data.employee.company || '';
@@ -78,8 +103,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateColor(primaryDisplay, primaryInput);
         updateColor(secondaryDisplay, secondaryInput);
         document.getElementById('privacy_level').value = data.employee.privacy_level || 'medium';
-
-        renderOverlay(data);
     }
     // Отобразить в панели просмотра, если есть сохранённые данные
     if (savedData) {
@@ -91,43 +114,97 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-function renderOverlay(employeeData) {
-    const overlay = document.getElementById('videoOverlay');
-    if (!overlay) return;
-
+function drawCanvasOverlay(ctx, employeeData) {
     if (!employeeData || !employeeData.employee) {
-        overlay.innerHTML = '';
-        return;
+        return; // Нечего рисовать
     }
 
     const e = employeeData.employee;
     const primary = e.branding?.corporate_colors?.primary || '#0052CC';
     const secondary = e.branding?.corporate_colors?.secondary || '#00B8D9';
+    
+    // Получаем размеры canvas для позиционирования
+    const canvas = ctx.canvas;
+    const padding = 20; // Отступ от краев
+    const lineHeight = 30; // Примерная высота строки (подберите)
+    const logoSize = 40; // Размер логотипа (подберите)
+    
+    // ВНИМАНИЕ: Стили (шрифты, точные отступы) нужно будет 
+    // настроить вручную, чтобы они соответствовали вашим CSS.
+    // Canvas не понимает CSS, здесь "ручное" позиционирование.
 
-    overlay.innerHTML = `
-        <div class="overlay-left">
-            <div class="overlay-company-row">
-                ${e.branding?.logo_url ? `<img src="${e.branding.logo_url}" class="overlay-logo" alt="logo">` : ''}
-                <div class="overlay-company" style="color:${primary};">${e.company || ''}</div>
-            </div>
-            <div class="overlay-slogan" style="color:${primary};">${e.branding?.slogan || ''}</div>
-            <div class="overlay-text" style="color:${secondary};">${e.department || ''}</div>
-            <div class="overlay-text" style="color:${secondary};">${e.office_location || ''}</div>
-        </div>
+    // --- Левая колонка (overlay-left) ---
+    let currentY = padding + (logoSize / 2); // Начинаем с Y
+    let currentX = padding;
+    
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle'; // Выравниваем по центру по вертикали
 
-        <div class="overlay-right">
-            <div class="overlay-name" style="color:${primary};">${e.full_name || ''}</div>
-            <div class="overlay-text" style="color:${primary};">${e.position || ''}</div>
-            <div class="overlay-contact" style="color:${secondary};">
-                ${e.contact?.email ? `<div>${e.contact.email}</div>` : ''}
-                ${e.contact?.telegram ? `<div>${e.contact.telegram}</div>` : ''}
-            </div>
-        </div>
-    `;
+    // Логотип
+    if (logoImageCache && e.branding?.logo_url) {
+        try {
+            // Рисуем логотип в (padding, padding)
+            ctx.drawImage(logoImageCache, padding, padding, logoSize, logoSize);
+            currentX += logoSize + 10; // Сдвигаем X для текста
+        } catch (err) {
+            console.warn("Ошибка отрисовки логотипа", err);
+            logoImageCache = null; // Ошибка, не пытаемся рисовать снова
+        }
+    }
+
+    // Компания
+    ctx.fillStyle = primary;
+    ctx.font = 'bold 24px Arial';
+    ctx.fillText(e.company || '', currentX, currentY);
+
+    // Сдвигаемся вниз под логотип/компанию
+    currentY = padding + logoSize + 15;
+
+    // Слоган
+    ctx.font = '18px Arial';
+    ctx.fillText(e.branding?.slogan || '', padding, currentY);
+    currentY += lineHeight;
+
+    // Отдел
+    ctx.fillStyle = secondary;
+    ctx.font = '16px Arial';
+    ctx.fillText(e.department || '', padding, currentY);
+    currentY += lineHeight;
+
+    // Офис
+    ctx.fillText(e.office_location || '', padding, currentY);
+
+
+    // --- Правая колонка (overlay-right) ---
+    currentY = padding + (lineHeight / 2); // Сбрасываем Y
+    const rightX = canvas.width - padding; // Координата X правого края
+    ctx.textAlign = 'right'; // Выравниваем текст по правому краю
+
+    // Имя
+    ctx.fillStyle = primary;
+    ctx.font = 'bold 28px Arial';
+    ctx.fillText(e.full_name || '', rightX, currentY);
+    currentY += lineHeight + 4;
+
+    // Должность
+    ctx.font = '20px Arial';
+    ctx.fillText(e.position || '', rightX, currentY);
+    currentY += lineHeight + 10; // Больший отступ
+
+    // Контакты
+    ctx.fillStyle = secondary;
+    ctx.font = '16px Arial';
+    if (e.contact?.email) {
+        ctx.fillText(e.contact.email, rightX, currentY);
+        currentY += lineHeight - 5; // Чуть плотнее
+    }
+    if (e.contact?.telegram) {
+        ctx.fillText(e.contact.telegram, rightX, currentY);
+    }
 }
 
 // Галерея фонов
-function setupGallery() {
+async function setupGallery() {
   const gallery = document.getElementById("bgGallery");
   const backgrounds = [
     "backgrounds/bg1.png",
@@ -143,8 +220,8 @@ function setupGallery() {
     img.className = "bg-thumb";
     img.title = `Фон ${i + 1}`;
     img.loading = "lazy";
-    img.onclick = () => {
-      currentBackground = bg;
+    img.onclick = async () => {
+      bgImageCache = await loadImage(bg);
     };
     gallery.appendChild(img);
   });
@@ -156,22 +233,6 @@ async function loadImage(url) {
         img.src = url;
         img.onload = () => resolve(img);
     });
-}
-
-// Отрисовка сохранённого профиля в панели
-function maskContactIfNeeded(value, privacyLevel) {
-    if (!value) return '';
-    if (privacyLevel === 'high') {
-        // маскируем (оставляем первый и последний символы перед @ для email)
-        if (value.includes('@')) {
-            const [local, domain] = value.split('@');
-            const shown = local.length > 2 ? local[0] + '…' + local.slice(-1) : local[0] + '…';
-            return shown + '@' + domain;
-        } else {
-            return value[0] + '…' + value.slice(-1);
-        }
-    }
-    return value;
 }
 
 // === Переключение режимов ===
@@ -394,10 +455,6 @@ async function startBackgroundReplacement() {
     bgCanvas.width = canvas.width;
     bgCanvas.height = canvas.height;
 
-    let maskData = null;
-    let bgImageCache = null;
-    let fps = 0;
-
     async function loop() {
         const start = performance.now();
         let temp = null;
@@ -407,11 +464,8 @@ async function startBackgroundReplacement() {
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             } else {
                 // Готовим фон
-                if (currentBackground) {
+                if (bgImageCache) {
                     // Замена изображением
-                    if (!bgImageCache || bgImageCache.src !== currentBackground) {
-                        bgImageCache = await loadImage(currentBackground);
-                    }
                     bgCtx.drawImage(bgImageCache, 0, 0, canvas.width, canvas.height);
                 } else {
                     // Размытие фона через downscale → blur → upscale
@@ -432,6 +486,9 @@ async function startBackgroundReplacement() {
                     bgCtx.filter = 'none';
                     bgCtx.drawImage(bgTempCanvas, 0, 0, canvas.width, canvas.height);
                 }
+
+                // Накладываем текст
+                drawCanvasOverlay(bgCtx, currentEmployeeData);
                 
                 // Получаем маску сегментации (теперь это Canvas)
                 const maskCanvas = await getSegmentationMaskCanvas(selfieSegmentation, video, canvas.width, canvas.height);
