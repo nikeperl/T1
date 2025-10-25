@@ -56,6 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Сохраняем в localStorage (перезаписывает при повторном сохранении)
         localStorage.setItem('employeeProfile', JSON.stringify(employeeData));
+        renderOverlay(employeeData);
         alert('Данные сохранены!');
     });
 
@@ -77,8 +78,53 @@ document.addEventListener('DOMContentLoaded', () => {
         updateColor(primaryDisplay, primaryInput);
         updateColor(secondaryDisplay, secondaryInput);
         document.getElementById('privacy_level').value = data.employee.privacy_level || 'medium';
+
+        renderOverlay(data);
+    }
+    // Отобразить в панели просмотра, если есть сохранённые данные
+    if (savedData) {
+        try {
+            renderUserProfile(JSON.parse(savedData));
+        } catch (err) {
+            console.warn('Ошибка разбора сохранённых данных для отображения', err);
+        }
     }
 });
+
+function renderOverlay(employeeData) {
+    const overlay = document.getElementById('videoOverlay');
+    if (!overlay) return;
+
+    if (!employeeData || !employeeData.employee) {
+        overlay.innerHTML = '';
+        return;
+    }
+
+    const e = employeeData.employee;
+    const primary = e.branding?.corporate_colors?.primary || '#0052CC';
+    const secondary = e.branding?.corporate_colors?.secondary || '#00B8D9';
+
+    overlay.innerHTML = `
+        <div class="overlay-left">
+            <div class="overlay-company-row">
+                ${e.branding?.logo_url ? `<img src="${e.branding.logo_url}" class="overlay-logo" alt="logo">` : ''}
+                <div class="overlay-company" style="color:${primary};">${e.company || ''}</div>
+            </div>
+            <div class="overlay-slogan" style="color:${primary};">${e.branding?.slogan || ''}</div>
+            <div class="overlay-text" style="color:${secondary};">${e.department || ''}</div>
+            <div class="overlay-text" style="color:${secondary};">${e.office_location || ''}</div>
+        </div>
+
+        <div class="overlay-right">
+            <div class="overlay-name" style="color:${primary};">${e.full_name || ''}</div>
+            <div class="overlay-text" style="color:${primary};">${e.position || ''}</div>
+            <div class="overlay-contact" style="color:${secondary};">
+                ${e.contact?.email ? `<div>${e.contact.email}</div>` : ''}
+                ${e.contact?.telegram ? `<div>${e.contact.telegram}</div>` : ''}
+            </div>
+        </div>
+    `;
+}
 
 // Галерея фонов
 function setupGallery() {
@@ -110,6 +156,22 @@ async function loadImage(url) {
         img.src = url;
         img.onload = () => resolve(img);
     });
+}
+
+// Отрисовка сохранённого профиля в панели
+function maskContactIfNeeded(value, privacyLevel) {
+    if (!value) return '';
+    if (privacyLevel === 'high') {
+        // маскируем (оставляем первый и последний символы перед @ для email)
+        if (value.includes('@')) {
+            const [local, domain] = value.split('@');
+            const shown = local.length > 2 ? local[0] + '…' + local.slice(-1) : local[0] + '…';
+            return shown + '@' + domain;
+        } else {
+            return value[0] + '…' + value.slice(-1);
+        }
+    }
+    return value;
 }
 
 // === Переключение режимов ===

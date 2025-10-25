@@ -10,8 +10,14 @@
     <div class="container">
         <h1>Видео с заменой фона</h1>
 
-        <video id="video" autoplay playsinline></video>
-        <canvas id="outputCanvas"></canvas>
+        <div class="video-wrapper">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="outputCanvas"></canvas>
+            <!-- START: оверлей с данными пользователя -->
+            <div id="videoOverlay"></div>
+            <!-- END -->
+        </div>
+        
         <div id="fps">FPS: 0</div>
 
         <h2>Галерея фонов</h2>
